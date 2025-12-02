@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JTC Building Explorer</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+</head>
+<body>
+    <div id="app-container">
+        <!-- Map -->
+        <div id="map"></div>
+
+        <!-- Header Bar -->
+        <div id="header-bar">
+            <div class="header-brand">
+                <i class="bi bi-buildings"></i>
+                <span>JTC Building Explorer</span>
+            </div>
+            <div class="header-stats">
+                <span class="stat-badge">
+                    <i class="bi bi-geo-alt-fill"></i>
+                    <span id="building-count">0</span> buildings
+                </span>
+            </div>
+        </div>
+
+        <!-- Layer Control Panel -->
+        <div id="layer-panel" class="card">
+            <div class="card-header">
+                <i class="bi bi-layers-fill"></i> Controls
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="layer-jtc-buildings" role="switch">
+                    <label class="form-check-label" for="layer-jtc-buildings">
+                        <i class="bi bi-building"></i> Show JTC Buildings
+                    </label>
+                </div>
+                <div class="filter-section">
+                    <label class="form-label" for="building-type-filter">
+                        <i class="bi bi-funnel"></i> Filter by Type
+                    </label>
+                    <select id="building-type-filter" class="form-select form-select-sm" title="Filter buildings by type">
+                        <option value="">All Building Types</option>
+                    </select>
+                </div>
+                <div class="legend-section mt-3">
+                    <label class="form-label small text-muted">Legend</label>
+                    <div class="legend-items">
+                        <div class="legend-item"><span class="legend-color legend-factory"></span>Factory Land Standard</div>
+                        <div class="legend-item"><span class="legend-color legend-terrace"></span>Terrace Factory</div>
+                        <div class="legend-item"><span class="legend-color legend-flatted"></span>Flatted Factory</div>
+                        <div class="legend-item"><span class="legend-color legend-stackup"></span>Stack-up Factory</div>
+                        <div class="legend-item"><span class="legend-color legend-business"></span>Business Park</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Assistant -->
+        <div id="chat-container" class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="assistant-avatar">🏭</span> JTC Assistant
+                </div>
+                <button class="btn btn-sm btn-link text-white p-0" onclick="toggleChat()" title="Toggle chat">
+                    <i class="bi bi-dash-lg"></i>
+                </button>
+            </div>
+            <div class="card-body" id="chat-messages">
+                <div class="chat-bubble assistant">
+                    <div class="typing-indicator">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer">
+                <div class="input-group">
+                    <input type="text" id="chat-input" class="form-control" placeholder="Ask about buildings...">
+                    <button class="btn btn-primary" onclick="sendMessage()" title="Send message" aria-label="Send message">
+                        <i class="bi bi-send-fill"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay">
+            <div class="loading-content">
+                <div class="spinner-border text-primary" role="status"></div>
+                <div class="loading-text">Loading buildings...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // ---------------------- Map Setup ----------------------
+        const map = L.map('map', { zoomControl: false }).setView([1.3521, 103.8198], 12);
+        
+        // Zoom control on bottom right
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        // OneMap Grey basemap (cleaner look)
+        L.tileLayer('https://www.onemap.gov.sg/maps/tiles/Grey/{z}/{x}/{y}.png', {
+            attribution: '© <a href="https://www.onemap.gov.sg">OneMap</a>',
+            maxZoom: 19
+        }).addTo(map);
+
+        // Layer group for JTC Buildings
+        const jtcBuildingsLayer = L.layerGroup().addTo(map);
+
+        // ---------------------- Layer Loading ----------------------
+        
+        function showLoading(show) {
+            document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none';
+        }
+
+        function getBuildingColor(desc) {
+            if (desc.includes('Terrace Factory')) return '#fd7e14';
+            if (desc.includes('Flatted Factory')) return '#6f42c1';
+            if (desc.includes('Stack-up')) return '#20c997';
+            if (desc.includes('Business Park')) return '#0d6efd';
+            return '#28a745'; // Default green
+        }
+
+        // Load building types for filter dropdown
+        async function loadBuildingTypes() {
+            try {
+                const resp = await fetch('/api/jtc-building-types');
+                const data = await resp.json();
+                
+                const select = document.getElementById('building-type-filter');
+                if (data.building_types) {
+                    data.building_types.forEach(type => {
+                        const option = document.createElement('option');
+                        option.value = type.toLowerCase();
+                        option.textContent = type;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to load building types:', e);
+            }
+        }
+
+        async function loadJtcBuildings() {
+            showLoading(true);
+            const buildingType = document.getElementById('building-type-filter').value;
+            try {
+                let url = '/api/jtc-buildings';
+                if (buildingType) {
+                    url += `?building_type=${encodeURIComponent(buildingType)}`;
+                }
+                
+                const resp = await fetch(url);
+                const data = await resp.json();
+                
+                jtcBuildingsLayer.clearLayers();
+                
+                if (data.features) {
+                    L.geoJSON(data, {
+                        style: function(feature) {
+                            const desc = feature.properties.Description || '';
+                            return {
+                                color: getBuildingColor(desc),
+                                weight: 2,
+                                fillOpacity: 0.5,
+                                opacity: 0.8
+                            };
+                        },
+                        onEachFeature: (feature, layer) => {
+                            const props = feature.properties;
+                            const desc = props.Description || '';
+                            
+                            // Extract building info from HTML
+                            const info = {
+                                status: desc.match(/BUILDING_STATUS<\/th>\s*<td>([^<]+)/)?.[1] || 'N/A',
+                                type: desc.match(/JTC_BUILDING_TYPE<\/th>\s*<td>([^<]+)/)?.[1] || 'N/A',
+                                block: desc.match(/BLOCK_NO<\/th>\s*<td>([^<]+)/)?.[1] || 'N/A',
+                                postal: desc.match(/POSTAL_CODE<\/th>\s*<td>([^<]+)/)?.[1] || 'N/A'
+                            };
+                            
+                            const popup = `
+                                <div class="building-popup">
+                                    <div class="popup-header"><i class="bi bi-building"></i> Block ${info.block}</div>
+                                    <div class="popup-body">
+                                        <div class="popup-row"><span class="popup-label">Type:</span>${info.type}</div>
+                                        <div class="popup-row"><span class="popup-label">Status:</span>${info.status}</div>
+                                        <div class="popup-row"><span class="popup-label">Postal:</span>${info.postal}</div>
+                                    </div>
+                                </div>`;
+                            
+                            layer.bindPopup(popup);
+                            
+                            // Hover effect
+                            layer.on('mouseover', function() { this.setStyle({ weight: 4, fillOpacity: 0.7 }); });
+                            layer.on('mouseout', function() { this.setStyle({ weight: 2, fillOpacity: 0.5 }); });
+                        }
+                    }).addTo(jtcBuildingsLayer);
+                    
+                    document.getElementById('building-count').textContent = data.features.length.toLocaleString();
+                }
+            } catch (e) {
+                console.error('Failed to load JTC buildings:', e);
+            }
+            showLoading(false);
+        }
+
+        // ---------------------- Event Handlers ----------------------
+        
+        document.getElementById('layer-jtc-buildings').addEventListener('change', function() {
+            if (this.checked) {
+                loadJtcBuildings();
+            } else {
+                jtcBuildingsLayer.clearLayers();
+                document.getElementById('building-count').textContent = '0';
+            }
+        });
+
+        document.getElementById('building-type-filter').addEventListener('change', function() {
+            if (document.getElementById('layer-jtc-buildings').checked) {
+                loadJtcBuildings();
+            }
+        });
+
+        // ---------------------- Chat ----------------------
+        
+        function toggleChat() {
+            const body = document.getElementById('chat-messages');
+            const footer = document.querySelector('#chat-container .card-footer');
+            const icon = document.querySelector('#chat-container .card-header .bi');
+            
+            if (body.style.display === 'none') {
+                body.style.display = 'block';
+                footer.style.display = 'block';
+                icon.className = 'bi bi-dash-lg';
+            } else {
+                body.style.display = 'none';
+                footer.style.display = 'none';
+                icon.className = 'bi bi-plus-lg';
+            }
+        }
+
+        function addChatMessage(text, isUser = false) {
+            const container = document.getElementById('chat-messages');
+            const bubble = document.createElement('div');
+            bubble.className = `chat-bubble ${isUser ? 'user' : 'assistant'}`;
+            bubble.innerHTML = text;
+            container.appendChild(bubble);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const msg = input.value.trim();
+            if (!msg) return;
+            
+            addChatMessage(msg, true);
+            input.value = '';
+            
+            // Show typing indicator
+            const typingBubble = document.createElement('div');
+            typingBubble.className = 'chat-bubble assistant typing';
+            typingBubble.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+            document.getElementById('chat-messages').appendChild(typingBubble);
+            document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+            
+            try {
+                const resp = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg })
+                });
+                
+                // Remove typing indicator
+                typingBubble.remove();
+                
+                const data = await resp.json();
+                
+                if (data.error) {
+                    addChatMessage('Sorry, I encountered an error. Please try again.');
+                } else {
+                    // Handle any map actions returned by the API
+                    if (data.action) {
+                        handleChatAction(data.action);
+                    }
+                    addChatMessage(data.response.replace(/\n/g, '<br>'));
+                }
+            } catch (e) {
+                typingBubble.remove();
+                console.error('Chat error:', e);
+                addChatMessage('Sorry, I could not process your request. Please try again.');
+            }
+        }
+        
+        // Handle map actions from chat API
+        function handleChatAction(action) {
+            switch(action.type) {
+                case 'show_buildings':
+                    document.getElementById('layer-jtc-buildings').checked = true;
+                    if (action.filter) {
+                        document.getElementById('building-type-filter').value = action.filter;
+                    } else {
+                        document.getElementById('building-type-filter').value = '';
+                    }
+                    loadJtcBuildings();
+                    break;
+                case 'clear_map':
+                    document.getElementById('layer-jtc-buildings').checked = false;
+                    document.getElementById('building-type-filter').value = '';
+                    jtcBuildingsLayer.clearLayers();
+                    document.getElementById('building-count').textContent = '0';
+                    break;
+            }
+        }
+
+        document.getElementById('chat-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // ---------------------- Init ----------------------
+        
+        async function init() {
+            // Load building types for filter
+            await loadBuildingTypes();
+            
+            // Load welcome message
+            try {
+                const resp = await fetch('/api/welcome');
+                const data = await resp.json();
+                document.querySelector('#chat-messages .chat-bubble').innerHTML = data.message.replace(/\n/g, '<br>');
+            } catch (e) {
+                document.querySelector('#chat-messages .chat-bubble').textContent = 'Welcome! Ask me about JTC buildings and developments.';
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
