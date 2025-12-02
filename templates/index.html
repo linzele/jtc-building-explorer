@@ -112,8 +112,12 @@
             maxZoom: 19
         }).addTo(map);
 
-        // Layer group for JTC Buildings
+        // Layer groups
         const jtcBuildingsLayer = L.layerGroup().addTo(map);
+        const demoParcelsLayer = L.layerGroup().addTo(map);
+        
+        // Track highlighted postal codes
+        let highlightedPostalCodes = [];
 
         // ---------------------- Layer Loading ----------------------
         
@@ -127,6 +131,92 @@
             if (desc.includes('Stack-up')) return '#20c997';
             if (desc.includes('Business Park')) return '#0d6efd';
             return '#28a745'; // Default green
+        }
+
+        // ---------------------- Demo Land Parcels ----------------------
+        
+        async function loadDemoParcels(postalCodesToHighlight = null) {
+            try {
+                const resp = await fetch('/api/demo-land-parcels');
+                const data = await resp.json();
+                
+                demoParcelsLayer.clearLayers();
+                highlightedPostalCodes = postalCodesToHighlight || [];
+                
+                if (data.features) {
+                    data.features.forEach(feature => {
+                        const props = feature.properties;
+                        const coords = feature.geometry.coordinates;
+                        const isHighlighted = highlightedPostalCodes.includes(props.postal_code);
+                        const isChemical = props.chemical_allowed;
+                        
+                        // Determine marker style
+                        let markerColor = isChemical ? '#e74c3c' : '#3498db';
+                        let markerSize = isHighlighted ? 18 : 12;
+                        let borderColor = isHighlighted ? '#ffff00' : '#ffffff';
+                        let borderWidth = isHighlighted ? 4 : 2;
+                        
+                        // Create custom div icon
+                        const icon = L.divIcon({
+                            className: 'custom-marker',
+                            html: `<div style="
+                                width: ${markerSize}px;
+                                height: ${markerSize}px;
+                                background: ${markerColor};
+                                border: ${borderWidth}px solid ${borderColor};
+                                border-radius: 50%;
+                                box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                                ${isHighlighted ? 'animation: pulse 1s infinite;' : ''}
+                            "></div>`,
+                            iconSize: [markerSize + borderWidth*2, markerSize + borderWidth*2],
+                            iconAnchor: [(markerSize + borderWidth*2)/2, (markerSize + borderWidth*2)/2]
+                        });
+                        
+                        const marker = L.marker([coords[1], coords[0]], { icon });
+                        
+                        // Popup content
+                        const popup = `
+                            <div class="building-popup">
+                                <div class="popup-header">
+                                    <i class="bi bi-geo-alt-fill"></i> ${props.name}
+                                </div>
+                                <div class="popup-body">
+                                    <div class="popup-row"><span class="popup-label">Postal:</span>${props.postal_code}</div>
+                                    <div class="popup-row"><span class="popup-label">Area:</span>${props.land_area}</div>
+                                    <div class="popup-row"><span class="popup-label">Zoning:</span>${props.zoning}</div>
+                                    <div class="popup-row"><span class="popup-label">Premium:</span>${props.land_premium}</div>
+                                    <div class="popup-row"><span class="popup-label">Chemical:</span>
+                                        <span style="color: ${isChemical ? '#e74c3c' : '#3498db'}; font-weight: bold;">
+                                            ${props.chemical_type}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>`;
+                        
+                        marker.bindPopup(popup);
+                        marker.addTo(demoParcelsLayer);
+                    });
+                    
+                    // Update count
+                    const count = highlightedPostalCodes.length > 0 ? highlightedPostalCodes.length : data.features.length;
+                    document.getElementById('building-count').textContent = count;
+                    
+                    // Fit bounds to highlighted markers
+                    if (highlightedPostalCodes.length > 0) {
+                        const highlightedFeatures = data.features.filter(f => 
+                            highlightedPostalCodes.includes(f.properties.postal_code)
+                        );
+                        if (highlightedFeatures.length > 0) {
+                            const bounds = L.latLngBounds(
+                                highlightedFeatures.map(f => [f.geometry.coordinates[1], f.geometry.coordinates[0]])
+                            );
+                            map.fitBounds(bounds, { padding: [80, 80], maxZoom: 13 });
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load demo parcels:', e);
+            }
         }
 
         // Load building types for filter dropdown
@@ -149,7 +239,10 @@
             }
         }
 
-        async function loadJtcBuildings() {
+        // Store all building features for postal code filtering
+        let allBuildingFeatures = [];
+
+        async function loadJtcBuildings(postalCodes = null) {
             showLoading(true);
             const buildingType = document.getElementById('building-type-filter').value;
             try {
@@ -164,13 +257,28 @@
                 jtcBuildingsLayer.clearLayers();
                 
                 if (data.features) {
-                    L.geoJSON(data, {
+                    // Store all features for later filtering
+                    allBuildingFeatures = data.features;
+                    
+                    // Filter by postal codes if provided
+                    let featuresToShow = data.features;
+                    if (postalCodes && postalCodes.length > 0) {
+                        featuresToShow = data.features.filter(f => {
+                            const desc = f.properties?.Description || '';
+                            const postalMatch = desc.match(/POSTAL_CODE<\/th>\s*<td>([^<]+)/);
+                            const postal = postalMatch ? postalMatch[1].trim() : '';
+                            return postalCodes.includes(postal);
+                        });
+                    }
+                    
+                    L.geoJSON({ type: 'FeatureCollection', features: featuresToShow }, {
                         style: function(feature) {
                             const desc = feature.properties.Description || '';
+                            const isHighlighted = postalCodes && postalCodes.length > 0;
                             return {
-                                color: getBuildingColor(desc),
-                                weight: 2,
-                                fillOpacity: 0.5,
+                                color: isHighlighted ? '#ff0000' : getBuildingColor(desc),
+                                weight: isHighlighted ? 4 : 2,
+                                fillOpacity: isHighlighted ? 0.7 : 0.5,
                                 opacity: 0.8
                             };
                         },
@@ -204,7 +312,15 @@
                         }
                     }).addTo(jtcBuildingsLayer);
                     
-                    document.getElementById('building-count').textContent = data.features.length.toLocaleString();
+                    document.getElementById('building-count').textContent = featuresToShow.length.toLocaleString();
+                    
+                    // Fit map to highlighted buildings if filtering by postal codes
+                    if (postalCodes && postalCodes.length > 0 && featuresToShow.length > 0) {
+                        const bounds = L.geoJSON({ type: 'FeatureCollection', features: featuresToShow }).getBounds();
+                        if (bounds.isValid()) {
+                            map.fitBounds(bounds, { padding: [50, 50] });
+                        }
+                    }
                 }
             } catch (e) {
                 console.error('Failed to load JTC buildings:', e);
@@ -219,8 +335,8 @@
                 loadJtcBuildings();
             } else {
                 jtcBuildingsLayer.clearLayers();
-                document.getElementById('building-count').textContent = '0';
             }
+            updateBuildingCount();
         });
 
         document.getElementById('building-type-filter').addEventListener('change', function() {
@@ -228,6 +344,14 @@
                 loadJtcBuildings();
             }
         });
+        
+        function updateBuildingCount() {
+            let count = demoParcelsLayer.getLayers().length;
+            if (document.getElementById('layer-jtc-buildings').checked) {
+                count += jtcBuildingsLayer.getLayers().length;
+            }
+            document.getElementById('building-count').textContent = count;
+        }
 
         // ---------------------- Chat ----------------------
         
@@ -272,7 +396,8 @@
             document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
             
             try {
-                const resp = await fetch('/api/chat', {
+                // Use chat-with-tools endpoint for enhanced functionality
+                const resp = await fetch('/api/chat-with-tools', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: msg })
@@ -311,13 +436,57 @@
                     }
                     loadJtcBuildings();
                     break;
+                case 'highlight_postal_codes':
+                    // Highlight demo parcels by postal codes
+                    loadDemoParcels(action.postal_codes);
+                    break;
+                case 'document_generated':
+                    // Document was generated and uploaded - show notification
+                    showDocumentNotification(action.document_url, action.parcel_name);
+                    // Also highlight the parcel on the map
+                    if (action.postal_code) {
+                        loadDemoParcels([action.postal_code]);
+                    }
+                    break;
+                case 'document_generated_local':
+                    // Document was saved locally
+                    console.log('Document saved locally:', action.filepath);
+                    break;
                 case 'clear_map':
                     document.getElementById('layer-jtc-buildings').checked = false;
                     document.getElementById('building-type-filter').value = '';
                     jtcBuildingsLayer.clearLayers();
+                    demoParcelsLayer.clearLayers();
+                    highlightedPostalCodes = [];
                     document.getElementById('building-count').textContent = '0';
                     break;
             }
+        }
+        
+        // Show a notification when document is generated
+        function showDocumentNotification(url, parcelName) {
+            // Create toast notification
+            const toast = document.createElement('div');
+            toast.className = 'document-toast';
+            toast.innerHTML = `
+                <div class="toast-content">
+                    <i class="fas fa-file-word"></i>
+                    <div class="toast-text">
+                        <strong>Document Generated!</strong>
+                        <p>${parcelName}</p>
+                    </div>
+                    <a href="${url}" target="_blank" class="toast-download">
+                        <i class="fas fa-download"></i> Download
+                    </a>
+                    <button class="toast-close" onclick="this.parentElement.parentElement.remove()">×</button>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            
+            // Auto-remove after 30 seconds
+            setTimeout(() => {
+                if (toast.parentElement) toast.remove();
+            }, 30000);
         }
 
         document.getElementById('chat-input').addEventListener('keypress', function(e) {
@@ -329,6 +498,8 @@
         async function init() {
             // Load building types for filter
             await loadBuildingTypes();
+            
+            // Don't load demo parcels by default - they will appear when user asks about chemicals
             
             // Load welcome message
             try {
@@ -342,5 +513,17 @@
 
         init();
     </script>
+    <style>
+        /* Pulse animation for highlighted markers */
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .custom-marker {
+            background: transparent;
+            border: none;
+        }
+    </style>
 </body>
 </html>

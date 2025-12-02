@@ -3,3 +3,5 @@ requests
 python-dotenv
 gunicorn
 openai
+python-docx
+azure-storage-blob

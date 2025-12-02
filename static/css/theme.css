@@ -603,3 +603,89 @@ body {
 #chat-messages::-webkit-scrollbar-thumb:hover {
     background: #aaa;
 }
+
+/* Document Toast Notification */
+.document-toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 10000;
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(100px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.document-toast .toast-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: linear-gradient(135deg, #1a5f7a 0%, #0d6efd 100%);
+    color: white;
+    padding: 16px 20px;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    max-width: 400px;
+}
+
+.document-toast .fa-file-word {
+    font-size: 24px;
+    color: #fff;
+}
+
+.document-toast .toast-text {
+    flex: 1;
+}
+
+.document-toast .toast-text strong {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 2px;
+}
+
+.document-toast .toast-text p {
+    margin: 0;
+    font-size: 12px;
+    opacity: 0.9;
+}
+
+.document-toast .toast-download {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    padding: 8px 14px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+
+.document-toast .toast-download:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.document-toast .toast-close {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0 4px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.document-toast .toast-close:hover {
+    opacity: 1;
+}
