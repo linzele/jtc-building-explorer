@@ -23,3 +23,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *_temp.json
+
+# Generated documents
+generated_docs/

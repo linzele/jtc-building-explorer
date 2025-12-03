@@ -136,25 +136,35 @@
         // ---------------------- Demo Land Parcels ----------------------
         
         async function loadDemoParcels(postalCodesToHighlight = null) {
+            // If no postal codes provided, don't show any parcels
+            if (!postalCodesToHighlight || postalCodesToHighlight.length === 0) {
+                demoParcelsLayer.clearLayers();
+                return;
+            }
+            
             try {
                 const resp = await fetch('/api/demo-land-parcels');
                 const data = await resp.json();
                 
                 demoParcelsLayer.clearLayers();
-                highlightedPostalCodes = postalCodesToHighlight || [];
+                highlightedPostalCodes = postalCodesToHighlight;
                 
                 if (data.features) {
-                    data.features.forEach(feature => {
+                    // Only show parcels that match the requested postal codes
+                    const matchingFeatures = data.features.filter(feature => 
+                        postalCodesToHighlight.includes(feature.properties.postal_code)
+                    );
+                    
+                    matchingFeatures.forEach(feature => {
                         const props = feature.properties;
                         const coords = feature.geometry.coordinates;
-                        const isHighlighted = highlightedPostalCodes.includes(props.postal_code);
                         const isChemical = props.chemical_allowed;
                         
-                        // Determine marker style
+                        // Highlighted marker style
                         let markerColor = isChemical ? '#e74c3c' : '#3498db';
-                        let markerSize = isHighlighted ? 18 : 12;
-                        let borderColor = isHighlighted ? '#ffff00' : '#ffffff';
-                        let borderWidth = isHighlighted ? 4 : 2;
+                        let markerSize = 18;
+                        let borderColor = '#ffff00';
+                        let borderWidth = 4;
                         
                         // Create custom div icon
                         const icon = L.divIcon({
@@ -166,7 +176,7 @@
                                 border: ${borderWidth}px solid ${borderColor};
                                 border-radius: 50%;
                                 box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-                                ${isHighlighted ? 'animation: pulse 1s infinite;' : ''}
+                                animation: pulse 1s infinite;
                             "></div>`,
                             iconSize: [markerSize + borderWidth*2, markerSize + borderWidth*2],
                             iconAnchor: [(markerSize + borderWidth*2)/2, (markerSize + borderWidth*2)/2]
@@ -197,21 +207,15 @@
                         marker.addTo(demoParcelsLayer);
                     });
                     
-                    // Update count
-                    const count = highlightedPostalCodes.length > 0 ? highlightedPostalCodes.length : data.features.length;
-                    document.getElementById('building-count').textContent = count;
+                    // Update count with number of matching features
+                    document.getElementById('building-count').textContent = matchingFeatures.length;
                     
-                    // Fit bounds to highlighted markers
-                    if (highlightedPostalCodes.length > 0) {
-                        const highlightedFeatures = data.features.filter(f => 
-                            highlightedPostalCodes.includes(f.properties.postal_code)
+                    // Fit bounds to markers
+                    if (matchingFeatures.length > 0) {
+                        const bounds = L.latLngBounds(
+                            matchingFeatures.map(f => [f.geometry.coordinates[1], f.geometry.coordinates[0]])
                         );
-                        if (highlightedFeatures.length > 0) {
-                            const bounds = L.latLngBounds(
-                                highlightedFeatures.map(f => [f.geometry.coordinates[1], f.geometry.coordinates[0]])
-                            );
-                            map.fitBounds(bounds, { padding: [80, 80], maxZoom: 13 });
-                        }
+                        map.fitBounds(bounds, { padding: [80, 80], maxZoom: 13 });
                     }
                 }
             } catch (e) {

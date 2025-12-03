@@ -41,31 +41,178 @@ JTC_BUILDING_DATASET = "d_db12567505086c5319ba8b95ff195ba2"
 # Cache
 _jtc_cache = {"data": None, "expires": None}
 
-# Land parcels data
+# Land parcels data - matching documents in Azure AI Search index
 LAND_PARCELS = [
-    {"postal_code": "528765", "name": "Tampines North Industrial", "coordinates": [103.9456, 1.3712],
-     "chemical_allowed": True, "chemical_type": "Class B2", "land_area": "2.5 ha", "zoning": "B2", "premium": "SGD 45M"},
-    {"postal_code": "637141", "name": "Jurong CleanTech Park", "coordinates": [103.6869, 1.3418],
-     "chemical_allowed": True, "chemical_type": "Green chemistry", "land_area": "1.8 ha", "zoning": "BP-White", "premium": "SGD 38M"},
-    {"postal_code": "757743", "name": "Woodlands Industrial Park", "coordinates": [103.7867, 1.4382],
-     "chemical_allowed": True, "chemical_type": "Petrochemical", "land_area": "3.2 ha", "zoning": "B2", "premium": "SGD 28M"},
-    {"postal_code": "797564", "name": "Seletar Aerospace Park", "coordinates": [103.8667, 1.4167],
-     "chemical_allowed": True, "chemical_type": "Aviation fuel", "land_area": "2.8 ha", "zoning": "B2-Aero", "premium": "SGD 42M"},
-    {"postal_code": "637371", "name": "Tuas South Industrial", "coordinates": [103.6367, 1.2867],
-     "chemical_allowed": True, "chemical_type": "Full spectrum", "land_area": "4.5 ha", "zoning": "B2-Heavy", "premium": "SGD 35M"},
-    {"postal_code": "569938", "name": "Ang Mo Kio Industrial Park 2", "coordinates": [103.8567, 1.3717],
-     "chemical_allowed": True, "chemical_type": "Pharmaceutical", "land_area": "1.5 ha", "zoning": "B1-White", "premium": "SGD 48M"},
-    {"postal_code": "417943", "name": "Kaki Bukit Industrial", "coordinates": [103.9067, 1.3367],
-     "chemical_allowed": True, "chemical_type": "Industrial solvents", "land_area": "1.0 ha", "zoning": "B2", "premium": "SGD 18M"},
-    {"postal_code": "486015", "name": "Changi Business Park", "coordinates": [103.9633, 1.3342],
-     "chemical_allowed": False, "chemical_type": "Not permitted", "land_area": "1.2 ha", "zoning": "BP", "premium": "SGD 52M"},
-    {"postal_code": "409015", "name": "Paya Lebar Industrial", "coordinates": [103.8917, 1.3217],
-     "chemical_allowed": False, "chemical_type": "Non-hazardous only", "land_area": "0.8 ha", "zoning": "B1", "premium": "SGD 22M"},
+    {"postal_code": "528872", "name": "Tampines North", "coordinates": [103.9456, 1.3750],
+     "chemical_allowed": True, "chemical_type": "Wafer fabrication chemicals", "land_area": "3.0 ha", "zoning": "B2", "premium": "SGD 55M"},
+    {"postal_code": "738339", "name": "Woodlands North", "coordinates": [103.7867, 1.4520],
+     "chemical_allowed": True, "chemical_type": "Petrochemical", "land_area": "2.8 ha", "zoning": "B2", "premium": "SGD 42M"},
+    {"postal_code": "729755", "name": "Sungei Kadut", "coordinates": [103.7543, 1.4180],
+     "chemical_allowed": True, "chemical_type": "Industrial solvents", "land_area": "2.5 ha", "zoning": "B2", "premium": "SGD 38M"},
+    {"postal_code": "637371", "name": "Tuas South", "coordinates": [103.6367, 1.2867],
+     "chemical_allowed": True, "chemical_type": "Full spectrum", "land_area": "4.5 ha", "zoning": "B2-Heavy", "premium": "SGD 48M"},
+    {"postal_code": "508988", "name": "Loyang", "coordinates": [103.9750, 1.3650],
+     "chemical_allowed": True, "chemical_type": "Pharmaceutical", "land_area": "2.2 ha", "zoning": "B2", "premium": "SGD 35M"},
+    {"postal_code": "628502", "name": "Pioneer", "coordinates": [103.6950, 1.3150],
+     "chemical_allowed": True, "chemical_type": "Green chemistry", "land_area": "3.5 ha", "zoning": "B2", "premium": "SGD 40M"},
+    {"postal_code": "498793", "name": "Changi North", "coordinates": [103.9850, 1.3850],
+     "chemical_allowed": False, "chemical_type": "Not permitted", "land_area": "2.0 ha", "zoning": "BP", "premium": "SGD 45M"},
+    {"postal_code": "758069", "name": "Senoko", "coordinates": [103.8050, 1.4450],
+     "chemical_allowed": True, "chemical_type": "Class B2 hazardous", "land_area": "3.0 ha", "zoning": "B2", "premium": "SGD 32M"},
+    {"postal_code": "728710", "name": "Kranji", "coordinates": [103.7550, 1.4280],
+     "chemical_allowed": False, "chemical_type": "Non-hazardous only", "land_area": "2.8 ha", "zoning": "B1", "premium": "SGD 36M"},
 ]
 
 CHEMICAL_POSTAL_CODES = [p["postal_code"] for p in LAND_PARCELS if p["chemical_allowed"]]
 CHEMICAL_KEYWORDS = ["chemical", "chemicals", "processing", "hazardous", "petrochemical", "pharmaceutical", "solvent"]
-DOC_KEYWORDS = ["draft", "generate", "create", "agreement", "document", "contract", "docx", "word"]
+
+# Semantic patterns for document generation requests
+DOC_PATTERNS = [
+    r"draft.*(?:tender|agreement|document|contract|docs|doc)",
+    r"generate.*(?:tender|agreement|document|contract|docs|doc)",
+    r"create.*(?:tender|agreement|document|contract|docs|doc)",
+    r"prepare.*(?:tender|agreement|document|contract|docs|doc)",
+    r"make.*(?:tender|agreement|document|contract|docs|doc)",
+    r"write.*(?:tender|agreement|document|contract|docs|doc)",
+    r"produce.*(?:tender|agreement|document|contract|docs|doc)",
+    r"land.*sales.*(?:tender|agreement|document|contract|docs|doc|in|at|for)",
+    r"sales.*tender",
+    r"tender.*document",
+    r"(?:tender|agreement|document|contract).*for.*(?:parcel|property|land|postal)",
+    r"(?:i need|i want|can you|please).*(?:tender|agreement|document|contract)",
+    r"(?:i plan|planning).*(?:land.*sales|tender|development)",
+    r"draft.*for.*(?:factory|manufacturing|industrial|semiconductor)",
+    r"docx|word.*(?:file|document)",
+]
+
+# Patterns to extract purpose/use from message
+PURPOSE_PATTERNS = [
+    r"for\s+(?:a\s+)?([\w\s]+?)\s+(?:factory|plant|facility|development)",
+    r"single\s+use\s+([\w\s]+)",
+    r"(?:purpose|use|used for)\s*:?\s*([\w\s]+)",
+    r"(?:semiconductor|wafer|manufacturing|industrial)\s+([\w\s]+)",
+]
+
+# Location keywords mapped to parcels for semantic matching
+LOCATION_ALIASES = {
+    "528872": ["tampines", "tampines north"],
+    "738339": ["woodlands", "woodlands north"],
+    "729755": ["sungei kadut", "kadut"],
+    "637371": ["tuas", "tuas south"],
+    "508988": ["loyang"],
+    "628502": ["pioneer"],
+    "498793": ["changi", "changi north"],
+    "758069": ["senoko"],
+    "728710": ["kranji"],
+}
+
+
+def is_document_request(message: str) -> bool:
+    """Check if message is requesting document generation."""
+    msg_lower = message.lower()
+    for pattern in DOC_PATTERNS:
+        if re.search(pattern, msg_lower):
+            return True
+    return False
+
+
+def extract_purpose(message: str) -> str:
+    """Extract the intended purpose/use from the message."""
+    msg_lower = message.lower()
+    
+    # Common purpose keywords
+    purposes = []
+    
+    if "single use factory" in msg_lower or "single-use factory" in msg_lower:
+        purposes.append("Single-Use Factory")
+    if "semiconductor" in msg_lower:
+        purposes.append("Semiconductor Manufacturing")
+    if "wafer" in msg_lower:
+        purposes.append("Wafer Fabrication")
+    if "manufacturing" in msg_lower:
+        purposes.append("Manufacturing")
+    if "r&d" in msg_lower or "research" in msg_lower:
+        purposes.append("R&D Facility")
+    if "electronics" in msg_lower:
+        purposes.append("Electronics Manufacturing")
+    if "pharmaceutical" in msg_lower:
+        purposes.append("Pharmaceutical Manufacturing")
+    if "chemical" in msg_lower:
+        purposes.append("Chemical Processing")
+    
+    # Try pattern matching
+    for pattern in PURPOSE_PATTERNS:
+        match = re.search(pattern, msg_lower)
+        if match:
+            extracted = match.group(1).strip()
+            if extracted and len(extracted) > 2:
+                purposes.append(extracted.title())
+    
+    return ", ".join(set(purposes)) if purposes else None
+
+
+def find_parcel_from_message(message: str) -> dict:
+    """Find parcel from message using postal code or location name."""
+    msg_lower = message.lower()
+    
+    # First try postal code
+    postal_match = re.search(r'\b(\d{6})\b', message)
+    if postal_match:
+        postal_code = postal_match.group(1)
+        parcel = next((p for p in LAND_PARCELS if p["postal_code"] == postal_code), None)
+        if parcel:
+            return parcel
+    
+    # Then try location aliases
+    for postal_code, aliases in LOCATION_ALIASES.items():
+        for alias in aliases:
+            if alias in msg_lower:
+                parcel = next((p for p in LAND_PARCELS if p["postal_code"] == postal_code), None)
+                if parcel:
+                    return parcel
+    
+    # Try matching parcel names directly
+    for parcel in LAND_PARCELS:
+        name_parts = parcel["name"].lower().split()
+        # Check if any significant word from parcel name is in message
+        for part in name_parts:
+            if len(part) > 3 and part in msg_lower:
+                return parcel
+    
+    return None
+
+
+def get_rag_response_with_url(parcel: dict, sas_url: str) -> str:
+    """Send document URL to RAG chatbot for a formatted response."""
+    if not openai_client:
+        return f"Generated **Land Sales Tender Document** for **{parcel['name']}** ({parcel['postal_code']}).\n\n📥 [Download]({sas_url})\n\n*Link expires in 24 hours.*"
+    
+    try:
+        prompt = f"""A Land Sales Tender Document has been generated for the following property:
+
+Property: {parcel['name']}
+Postal Code: {parcel['postal_code']}
+Land Area: {parcel.get('land_area', 'N/A')}
+Zoning: {parcel.get('zoning', 'N/A')}
+Land Premium: {parcel.get('premium', 'N/A')}
+Chemical Processing: {'Permitted - ' + parcel.get('chemical_type', '') if parcel.get('chemical_allowed') else 'Not Permitted'}
+
+Document Download URL: {sas_url}
+
+Please provide a brief, professional response confirming the document has been generated. Include the download link and mention the link expires in 24 hours. Keep it concise."""
+
+        response = openai_client.chat.completions.create(
+            model=AZURE_OPENAI_DEPLOYMENT,
+            messages=[
+                {"role": "system", "content": "You are a helpful JTC assistant. Provide concise, professional responses."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=500,
+            temperature=0.7
+        )
+        return response.choices[0].message.content
+    except:
+        return f"Generated **Land Sales Tender Document** for **{parcel['name']}** ({parcel['postal_code']}).\n\n📥 [Download]({sas_url})\n\n*Link expires in 24 hours.*"
 
 
 def get_jtc_buildings():
@@ -96,8 +243,8 @@ def get_jtc_buildings():
 
 def get_document_generator():
     """Import document generator module."""
-    from document_generator import generate_land_sales_agreement, upload_to_blob, generate_local
-    return {"generate": generate_land_sales_agreement, "upload": upload_to_blob, "local": generate_local}
+    from document_generator import generate_land_sales_tender_document, upload_to_blob, generate_local
+    return {"generate": generate_land_sales_tender_document, "upload": upload_to_blob, "local": generate_local}
 
 
 # Routes
@@ -207,29 +354,38 @@ def chat_with_tools():
         return jsonify({"error": "No message"}), 400
     
     msg_lower = message.lower()
-    is_doc_request = any(kw in msg_lower for kw in DOC_KEYWORDS) and "agreement" in msg_lower
+    is_doc_request = is_document_request(message)
     is_chemical = any(kw in msg_lower for kw in CHEMICAL_KEYWORDS)
     
     # Document generation flow
     if is_doc_request:
-        postal_match = re.search(r'\b(\d{6})\b', message)
-        postal_code = postal_match.group(1) if postal_match else None
+        # Find parcel by postal code OR location name
+        parcel = find_parcel_from_message(message)
         
-        if postal_code:
-            parcel = next((p for p in LAND_PARCELS if p["postal_code"] == postal_code), None)
-            if parcel:
-                try:
-                    doc_gen = get_document_generator()
-                    result = doc_gen["upload"](postal_code)
-                    response = f"Generated **Land Sales Agreement** for **{parcel['name']}** ({postal_code}).\n\n📥 [Download]({result['sas_url']})\n\n*Link expires in 24 hours.*"
-                    return jsonify({"response": response, "action": {"type": "document_generated", "document_url": result["sas_url"], "postal_code": postal_code}})
-                except ValueError:
-                    filepath = doc_gen["local"](postal_code)
-                    return jsonify({"response": f"Generated agreement saved to `{filepath}`.\n\n⚠️ Configure Azure Blob Storage for shareable links.", "action": {"type": "document_generated_local", "filepath": filepath}})
+        # Extract purpose from message
+        purpose = extract_purpose(message)
         
-        # List available parcels
+        if parcel:
+            postal_code = parcel["postal_code"]
+            try:
+                doc_gen = get_document_generator()
+                result = doc_gen["upload"](postal_code, "Sample Buyer Pte Ltd", purpose)
+                sas_url = result['sas_url']
+                
+                # Send to RAG for a nicely formatted response with the URL
+                rag_response = get_rag_response_with_url(parcel, sas_url)
+                
+                return jsonify({
+                    "response": rag_response,
+                    "action": {"type": "document_generated", "document_url": sas_url, "postal_code": postal_code}
+                })
+            except ValueError:
+                filepath = doc_gen["local"](postal_code, "Sample Buyer Pte Ltd", purpose)
+                return jsonify({"response": f"Generated agreement saved to `{filepath}`.\n\n⚠️ Configure Azure Blob Storage for shareable links.", "action": {"type": "document_generated_local", "filepath": filepath}})
+        
+        # No parcel found - list available options
         table = "\n".join([f"| {p['postal_code']} | {p['name']} |" for p in LAND_PARCELS])
-        return jsonify({"response": f"Specify a postal code:\n\n| Code | Location |\n|------|----------|\n{table}"})
+        return jsonify({"response": f"I couldn't identify the location. Please specify:\n\n| Code | Location |\n|------|----------|\n{table}\n\nYou can say things like 'draft agreement for Tampines North' or 'create land sales doc for 528765'."})
     
     # Regular chat with RAG
     return chat_rag(message, is_chemical)

@@ -1,19 +1,22 @@
-# JTC Industrial Buildings Map
+# JTC Building Explorer
 
-Interactive Singapore map for JTC industrial buildings exploration with AI-powered chat assistant.
+Interactive Singapore map for JTC industrial land exploration with AI-powered chat assistant and automated document generation.
 
 ## Features
 
 - **JTC Buildings Layer** – Real-time GeoJSON data from Data.gov.sg with building type filtering
-- **AI Chat Assistant** – Azure OpenAI-powered assistant with RAG for agreement drafting guidance
+- **AI Chat Assistant** – Azure OpenAI-powered assistant with RAG for land sales guidance
+- **Land Parcel Discovery** – Ask about chemical processing to highlight eligible parcels on the map
+- **Document Generation** – Automated Land Sales Tender Document generation with Azure AI Search integration
+- **Cloud Storage** – Generated documents uploaded to Azure Blob Storage with secure download links
 - **Interactive Map** – Leaflet.js with OneMap basemap, building popups with detailed information
-- **Building Type Filtering** – Filter by Business Park, Flatted Factory, Specialized Park, etc.
 
 ## Tech Stack
 
 - **Backend**: Flask (Python)
 - **Frontend**: Leaflet.js, Bootstrap 5
 - **AI**: Azure OpenAI + Azure AI Search (RAG)
+- **Storage**: Azure Blob Storage
 - **Data Source**: JTC Data.gov.sg API
 
 ## Setup
@@ -67,15 +70,25 @@ Open http://127.0.0.1:5000 in your browser.
 |----------|-------------|
 | `GET /` | Main map interface |
 | `GET /api/jtc-building-types` | JTC building GeoJSON data |
+| `GET /api/demo-land-parcels` | Land parcel GeoJSON data |
 | `GET /api/welcome` | Welcome message with chat instructions |
-| `POST /api/chat` | AI chat endpoint (RAG-enabled) |
+| `POST /api/chat-with-tools` | AI chat endpoint with document generation |
+| `POST /api/generate-agreement` | Direct document generation endpoint |
+
+## Usage Examples
+
+**Find parcels allowing chemical processing:**
+> "Which buildings allow chemical processing?"
+
+**Generate a Land Sales Tender Document:**
+> "I plan to do a land sales in Tampines North for single use factory, draft a land sales document for me"
 
 ## Map Controls
 
 - **Layer Toggle**: Enable/disable JTC Buildings layer
 - **Building Type Filter**: Dropdown to filter by building category
 - **Click Buildings**: View detailed popup with building info
-- **Chat Actions**: AI can control map via SHOW_ALL, FILTER, CLEAR commands
+- **Chat Actions**: AI can highlight specific parcels via postal codes
 
 ## Deployment
 
