@@ -34,10 +34,16 @@
                 <i class="bi bi-layers-fill"></i> Controls
             </div>
             <div class="card-body">
-                <div class="form-check form-switch mb-3">
+                <div class="form-check form-switch mb-2">
                     <input class="form-check-input" type="checkbox" id="layer-jtc-buildings" role="switch">
                     <label class="form-check-label" for="layer-jtc-buildings">
                         <i class="bi bi-building"></i> Show JTC Buildings
+                    </label>
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="layer-sla-districts" role="switch">
+                    <label class="form-check-label" for="layer-sla-districts">
+                        <i class="bi bi-bounding-box"></i> Show Survey Districts
                     </label>
                 </div>
                 <div class="filter-section">
@@ -56,14 +62,15 @@
                         <div class="legend-item"><span class="legend-color legend-flatted"></span>Flatted Factory</div>
                         <div class="legend-item"><span class="legend-color legend-stackup"></span>Stack-up Factory</div>
                         <div class="legend-item"><span class="legend-color legend-business"></span>Business Park</div>
+                        <div class="legend-item"><span class="legend-color" style="background: rgba(128, 0, 128, 0.3); border: 2px solid #800080;"></span>Survey District</div>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Chat Assistant -->
-        <div id="chat-container" class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+        <div id="chat-container">
+            <div class="chat-header d-flex justify-content-between align-items-center">
                 <div>
                     <span class="assistant-avatar">🏭</span> JTC Assistant
                 </div>
@@ -71,14 +78,14 @@
                     <i class="bi bi-dash-lg"></i>
                 </button>
             </div>
-            <div class="card-body" id="chat-messages">
+            <div class="chat-body" id="chat-messages">
                 <div class="chat-bubble assistant">
                     <div class="typing-indicator">
                         <span></span><span></span><span></span>
                     </div>
                 </div>
             </div>
-            <div class="card-footer">
+            <div class="chat-footer">
                 <div class="input-group">
                     <input type="text" id="chat-input" class="form-control" placeholder="Ask about buildings...">
                     <button class="btn btn-primary" onclick="sendMessage()" title="Send message" aria-label="Send message">
@@ -115,6 +122,7 @@
         // Layer groups
         const jtcBuildingsLayer = L.layerGroup().addTo(map);
         const demoParcelsLayer = L.layerGroup().addTo(map);
+        const slaDistrictsLayer = L.layerGroup().addTo(map);
         
         // Track highlighted postal codes
         let highlightedPostalCodes = [];
@@ -131,6 +139,94 @@
             if (desc.includes('Stack-up')) return '#20c997';
             if (desc.includes('Business Park')) return '#0d6efd';
             return '#28a745'; // Default green
+        }
+        
+        // ---------------------- SLA Survey Districts ----------------------
+        
+        async function loadSlaDistricts() {
+            try {
+                const resp = await fetch('/api/sla-districts');
+                const data = await resp.json();
+                
+                slaDistrictsLayer.clearLayers();
+                
+                if (data.features) {
+                    L.geoJSON(data, {
+                        style: function(feature) {
+                            return {
+                                color: '#800080',
+                                weight: 2,
+                                fillColor: '#800080',
+                                fillOpacity: 0.1,
+                                dashArray: '5, 5'
+                            };
+                        },
+                        onEachFeature: function(feature, layer) {
+                            const desc = feature.properties.Description || '';
+                            
+                            // Parse district info
+                            const districtMatch = desc.match(/SURVEY_DISTRICT<\/th>\s*<td>([^<]+)/);
+                            const crcMatch = desc.match(/INC_CRC<\/th>\s*<td>([^<]+)/);
+                            const dateMatch = desc.match(/FMEL_UPD_D<\/th>\s*<td>([^<]+)/);
+                            
+                            const districtCode = districtMatch ? districtMatch[1].trim() : 'Unknown';
+                            const crc = crcMatch ? crcMatch[1].trim() : 'N/A';
+                            const updateDate = dateMatch ? dateMatch[1].trim() : 'N/A';
+                            
+                            // Format date (YYYYMMDDHHMMSS -> readable)
+                            let formattedDate = updateDate;
+                            if (updateDate && updateDate.length >= 8) {
+                                formattedDate = `${updateDate.slice(0,4)}-${updateDate.slice(4,6)}-${updateDate.slice(6,8)}`;
+                            }
+                            
+                            // Determine district type from code
+                            let districtType = 'Unknown';
+                            if (districtCode.startsWith('MK')) {
+                                districtType = 'Mukim (Rural)';
+                            } else if (districtCode.startsWith('TS')) {
+                                districtType = 'Town Subdivision';
+                            }
+                            
+                            const popup = `
+                                <div class="building-popup">
+                                    <div class="popup-header" style="background: #800080;">
+                                        <i class="bi bi-bounding-box"></i> Survey District ${districtCode}
+                                    </div>
+                                    <div class="popup-body">
+                                        <div class="popup-row"><span class="popup-label">Type:</span>${districtType}</div>
+                                        <div class="popup-row"><span class="popup-label">Code:</span>${districtCode}</div>
+                                        <div class="popup-row"><span class="popup-label">Updated:</span>${formattedDate}</div>
+                                    </div>
+                                </div>`;
+                            
+                            layer.bindPopup(popup);
+                            
+                            // Hover effect
+                            layer.on('mouseover', function() {
+                                this.setStyle({ weight: 3, fillOpacity: 0.25 });
+                            });
+                            layer.on('mouseout', function() {
+                                this.setStyle({ weight: 2, fillOpacity: 0.1 });
+                            });
+                        }
+                    }).addTo(slaDistrictsLayer);
+                    
+                    console.log(`Loaded ${data.count} SLA survey districts`);
+                }
+            } catch (e) {
+                console.error('Failed to load SLA districts:', e);
+            }
+        }
+        
+        // Look up district for a coordinate
+        async function lookupDistrict(lon, lat) {
+            try {
+                const resp = await fetch(`/api/sla-districts/lookup?lon=${lon}&lat=${lat}`);
+                return await resp.json();
+            } catch (e) {
+                console.error('District lookup failed:', e);
+                return null;
+            }
         }
 
         // ---------------------- Demo Land Parcels ----------------------
@@ -158,10 +254,9 @@
                     matchingFeatures.forEach(feature => {
                         const props = feature.properties;
                         const coords = feature.geometry.coordinates;
-                        const isChemical = props.chemical_allowed;
                         
-                        // Highlighted marker style
-                        let markerColor = isChemical ? '#e74c3c' : '#3498db';
+                        // Highlighted marker style - all parcels use same color
+                        let markerColor = '#e74c3c';
                         let markerSize = 18;
                         let borderColor = '#ffff00';
                         let borderWidth = 4;
@@ -185,6 +280,10 @@
                         const marker = L.marker([coords[1], coords[0]], { icon });
                         
                         // Popup content
+                        // Random building types for highlighted parcels
+                        const buildingTypes = ['Business Park', 'Terrace Factory', 'Flatted Factory', 'Stack-up Factory', 'Factory Land Standard'];
+                        const randomType = buildingTypes[Math.floor(Math.random() * buildingTypes.length)];
+                        
                         const popup = `
                             <div class="building-popup">
                                 <div class="popup-header">
@@ -194,12 +293,12 @@
                                     <div class="popup-row"><span class="popup-label">Postal:</span>${props.postal_code}</div>
                                     <div class="popup-row"><span class="popup-label">Area:</span>${props.land_area}</div>
                                     <div class="popup-row"><span class="popup-label">Zoning:</span>${props.zoning}</div>
-                                    <div class="popup-row"><span class="popup-label">Premium:</span>${props.land_premium}</div>
-                                    <div class="popup-row"><span class="popup-label">Chemical:</span>
-                                        <span style="color: ${isChemical ? '#e74c3c' : '#3498db'}; font-weight: bold;">
-                                            ${props.chemical_type}
+                                    <div class="popup-row"><span class="popup-label">Type:</span>
+                                        <span style="color: #0d6efd; font-weight: bold;">
+                                            ${props.building_type || randomType}
                                         </span>
                                     </div>
+                                    ${props.survey_district ? `<div class="popup-row"><span class="popup-label">District:</span><span style="color: #800080; font-weight: bold;">${props.survey_district}</span></div>` : ''}
                                 </div>
                             </div>`;
                         
@@ -342,6 +441,14 @@
             }
             updateBuildingCount();
         });
+        
+        document.getElementById('layer-sla-districts').addEventListener('change', function() {
+            if (this.checked) {
+                loadSlaDistricts();
+            } else {
+                slaDistrictsLayer.clearLayers();
+            }
+        });
 
         document.getElementById('building-type-filter').addEventListener('change', function() {
             if (document.getElementById('layer-jtc-buildings').checked) {
@@ -361,8 +468,8 @@
         
         function toggleChat() {
             const body = document.getElementById('chat-messages');
-            const footer = document.querySelector('#chat-container .card-footer');
-            const icon = document.querySelector('#chat-container .card-header .bi');
+            const footer = document.querySelector('#chat-container .chat-footer');
+            const icon = document.querySelector('#chat-container .chat-header .bi');
             
             if (body.style.display === 'none') {
                 body.style.display = 'block';
@@ -428,6 +535,9 @@
             }
         }
         
+        // Track highlighted districts
+        let highlightedDistricts = [];
+        
         // Handle map actions from chat API
         function handleChatAction(action) {
             switch(action.type) {
@@ -444,6 +554,10 @@
                     // Highlight demo parcels by postal codes
                     loadDemoParcels(action.postal_codes);
                     break;
+                case 'highlight_districts':
+                    // Highlight specific survey districts
+                    highlightDistricts(action.district_codes);
+                    break;
                 case 'document_generated':
                     // Document was generated and uploaded - show notification
                     showDocumentNotification(action.document_url, action.parcel_name);
@@ -458,12 +572,125 @@
                     break;
                 case 'clear_map':
                     document.getElementById('layer-jtc-buildings').checked = false;
+                    document.getElementById('layer-sla-districts').checked = false;
                     document.getElementById('building-type-filter').value = '';
                     jtcBuildingsLayer.clearLayers();
                     demoParcelsLayer.clearLayers();
+                    slaDistrictsLayer.clearLayers();
                     highlightedPostalCodes = [];
+                    highlightedDistricts = [];
                     document.getElementById('building-count').textContent = '0';
                     break;
+                case 'show_districts':
+                    document.getElementById('layer-sla-districts').checked = true;
+                    loadSlaDistricts();
+                    break;
+            }
+        }
+        
+        // Highlight specific districts on the map
+        async function highlightDistricts(districtCodes) {
+            highlightedDistricts = districtCodes;
+            
+            // Enable districts layer if not already
+            document.getElementById('layer-sla-districts').checked = true;
+            
+            try {
+                // Fetch districts filtered by codes
+                const codesParam = districtCodes.join(',');
+                const resp = await fetch(`/api/sla-districts?districts=${codesParam}`);
+                const allData = await resp.json();
+                
+                slaDistrictsLayer.clearLayers();
+                
+                if (allData.features) {
+                    const bounds = [];
+                    
+                    L.geoJSON(allData, {
+                        style: function(feature) {
+                            const desc = feature.properties.Description || '';
+                            const districtMatch = desc.match(/SURVEY_DISTRICT<\/th>\s*<td>([^<]+)/);
+                            const districtCode = districtMatch ? districtMatch[1].trim() : '';
+                            const isHighlighted = districtCodes.includes(districtCode);
+                            
+                            return {
+                                color: isHighlighted ? '#ff4444' : '#800080',
+                                weight: isHighlighted ? 4 : 2,
+                                fillColor: isHighlighted ? '#ff4444' : '#800080',
+                                fillOpacity: isHighlighted ? 0.35 : 0.1,
+                                dashArray: isHighlighted ? null : '5, 5'
+                            };
+                        },
+                        onEachFeature: function(feature, layer) {
+                            const desc = feature.properties.Description || '';
+                            
+                            // Parse district info
+                            const districtMatch = desc.match(/SURVEY_DISTRICT<\/th>\s*<td>([^<]+)/);
+                            const crcMatch = desc.match(/INC_CRC<\/th>\s*<td>([^<]+)/);
+                            const dateMatch = desc.match(/FMEL_UPD_D<\/th>\s*<td>([^<]+)/);
+                            
+                            const districtCode = districtMatch ? districtMatch[1].trim() : 'Unknown';
+                            const isHighlighted = districtCodes.includes(districtCode);
+                            const updateDate = dateMatch ? dateMatch[1].trim() : 'N/A';
+                            
+                            // Format date
+                            let formattedDate = updateDate;
+                            if (updateDate && updateDate.length >= 8) {
+                                formattedDate = `${updateDate.slice(0,4)}-${updateDate.slice(4,6)}-${updateDate.slice(6,8)}`;
+                            }
+                            
+                            // Determine district type
+                            let districtType = 'Unknown';
+                            if (districtCode.startsWith('MK')) {
+                                districtType = 'Mukim (Rural)';
+                            } else if (districtCode.startsWith('TS')) {
+                                districtType = 'Town Subdivision';
+                            }
+                            
+                            const headerColor = isHighlighted ? '#ff4444' : '#800080';
+                            const popup = `
+                                <div class="building-popup">
+                                    <div class="popup-header" style="background: ${headerColor};">
+                                        <i class="bi bi-bounding-box"></i> Survey District ${districtCode}
+                                        ${isHighlighted ? '<span class="badge bg-warning text-dark ms-2">Highlighted</span>' : ''}
+                                    </div>
+                                    <div class="popup-body">
+                                        <div class="popup-row"><span class="popup-label">Type:</span>${districtType}</div>
+                                        <div class="popup-row"><span class="popup-label">Code:</span>${districtCode}</div>
+                                        <div class="popup-row"><span class="popup-label">Updated:</span>${formattedDate}</div>
+                                    </div>
+                                </div>`;
+                            
+                            layer.bindPopup(popup);
+                            
+                            // Collect bounds for highlighted districts
+                            if (isHighlighted) {
+                                bounds.push(layer.getBounds());
+                            }
+                            
+                            // Hover effect
+                            layer.on('mouseover', function() {
+                                this.setStyle({ weight: isHighlighted ? 5 : 3, fillOpacity: isHighlighted ? 0.45 : 0.25 });
+                            });
+                            layer.on('mouseout', function() {
+                                this.setStyle({ weight: isHighlighted ? 4 : 2, fillOpacity: isHighlighted ? 0.35 : 0.1 });
+                            });
+                        }
+                    }).addTo(slaDistrictsLayer);
+                    
+                    // Fit map to highlighted districts
+                    if (bounds.length > 0) {
+                        let combinedBounds = bounds[0];
+                        for (let i = 1; i < bounds.length; i++) {
+                            combinedBounds.extend(bounds[i]);
+                        }
+                        map.fitBounds(combinedBounds, { padding: [50, 50], maxZoom: 14 });
+                    }
+                    
+                    console.log(`Highlighted ${districtCodes.length} districts: ${districtCodes.join(', ')}`);
+                }
+            } catch (e) {
+                console.error('Failed to highlight districts:', e);
             }
         }
         
@@ -498,6 +725,41 @@
         });
 
         // ---------------------- Init ----------------------
+        
+        // Map click handler to lookup district
+        map.on('click', async function(e) {
+            // Only lookup if districts layer is enabled and click isn't on a marker/polygon
+            if (!document.getElementById('layer-sla-districts').checked) return;
+            
+            const { lat, lng } = e.latlng;
+            const result = await lookupDistrict(lng, lat);
+            
+            if (result && result.found) {
+                const district = result.district;
+                let districtType = 'Unknown';
+                if (district.survey_district && district.survey_district.startsWith('MK')) {
+                    districtType = 'Mukim (Rural)';
+                } else if (district.survey_district && district.survey_district.startsWith('TS')) {
+                    districtType = 'Town Subdivision';
+                }
+                
+                L.popup()
+                    .setLatLng(e.latlng)
+                    .setContent(`
+                        <div class="building-popup">
+                            <div class="popup-header" style="background: #800080;">
+                                <i class="bi bi-crosshair"></i> Location Lookup
+                            </div>
+                            <div class="popup-body">
+                                <div class="popup-row"><span class="popup-label">District:</span><strong style="color: #800080;">${district.survey_district}</strong></div>
+                                <div class="popup-row"><span class="popup-label">Type:</span>${districtType}</div>
+                                <div class="popup-row"><span class="popup-label">Coords:</span>${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
+                            </div>
+                        </div>
+                    `)
+                    .openOn(map);
+            }
+        });
         
         async function init() {
             // Load building types for filter

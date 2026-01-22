@@ -224,16 +224,14 @@ def generate_land_sales_tender_document(parcel: dict, buyer: str = "Sample Buyer
     
     # Property Details Table
     doc.add_heading("1.3 Land Parcel Details", level=2)
-    table = doc.add_table(rows=7, cols=2)
+    table = doc.add_table(rows=5, cols=2)
     table.style = 'Table Grid'
     details = [
         ("Location", parcel.get('name', 'N/A')),
         ("Postal Code", parcel.get('postal_code', 'N/A')),
         ("Land Area", parcel.get('land_area', 'N/A')),
         ("Zoning", parcel.get('zoning', 'N/A')),
-        ("Maximum Building Height", requirements.get("building_height") or "As per Control Plan"),
-        ("Chemical Processing", "Permitted" if parcel.get('chemical_allowed') else "Not Permitted"),
-        ("Land Premium", parcel.get('premium', 'TBD')),
+        ("Building Type", parcel.get('building_type', 'Industrial')),
     ]
     for i, (label, value) in enumerate(details):
         table.rows[i].cells[0].text = label
@@ -373,11 +371,8 @@ def generate_land_sales_tender_document(parcel: dict, buyer: str = "Sample Buyer
     doc.add_paragraph("6.2 Approvals and Permits: The Tenderer shall obtain all necessary planning permissions, building plan approvals, environmental permits, and any other approvals or licenses required from relevant authorities before commencement of any development works. Construction shall not commence until all requisite approvals have been obtained and copies submitted to JTC Corporation.")
     doc.add_paragraph()
     doc.add_paragraph("6.3 Environmental Requirements: The Tenderer shall implement appropriate environmental management measures during construction and operation of the development. This includes dust and noise control, proper waste management, prevention of water pollution, and compliance with all NEA environmental standards and requirements.")
-    if parcel.get('chemical_allowed'):
-        doc.add_paragraph()
-        doc.add_paragraph(f"6.4 Chemical Processing: The Land Parcel is approved for {parcel.get('chemical_type', 'chemical processing')} activities. The Tenderer must obtain all necessary licenses and permits from NEA and other relevant authorities for chemical processing, storage, and handling activities. Strict compliance with all safety regulations, pollution control requirements, and industry best practices is mandatory. The Tenderer shall maintain valid licenses throughout the operational period and implement comprehensive emergency response procedures.")
     doc.add_paragraph()
-    doc.add_paragraph("6.5 Insurance: The Tenderer shall maintain adequate insurance coverage including but not limited to contractor's all risks insurance during construction, public liability insurance, and property insurance upon completion. Evidence of such insurance shall be provided to JTC Corporation upon request.")
+    doc.add_paragraph("6.4 Insurance: The Tenderer shall maintain adequate insurance coverage including but not limited to contractor's all risks insurance during construction, public liability insurance, and property insurance upon completion. Evidence of such insurance shall be provided to JTC Corporation upon request.")
     doc.add_paragraph()
     
     # PART VII: TECHNICAL CONDITIONS
